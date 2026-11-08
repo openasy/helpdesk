@@ -1,0 +1,3641 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "OpenAsy Helpdesk API",
+    "version": "0.1.0",
+    "summary": "Emails, forms and chats become tickets in queues, with owners, SLAs, replies from the support address and the customer from CRM.",
+    "description": "Every screen of Helpdesk uses this API, and so can your scripts (ADR 0014). Within `/api/v1` changes are additive only; anything removed is deprecated first (ADR 0024). Errors use Problem Details (RFC 9457).\n\nForms, Live Chat and a site's own form open tickets with `POST /api/v1/public/tickets`, with a source's key or from a page on its origins. Customers answer the satisfaction question at `/r/<token>`. Queues, routing rules, SLAs and the links to CRM and Knowledge Base come from the settings file, never the API. Everything else takes the session of a signed-in person or an API token, and each operation names the role it needs (`x-openasy-role`: viewer, editor, admin; ADR 0003).\n\nCRM is asked about a ticket's customer with `GET <crm.url>/api/v1/lookup?email=`; its answer is described here as `CrmLookup`.\n\nSign-in, members and API tokens are under `/api/v1/auth`, provided by [@openasy/auth](https://github.com/openasy/auth#routes).",
+    "license": {
+      "name": "AGPL-3.0-only",
+      "identifier": "AGPL-3.0-only"
+    }
+  },
+  "servers": [
+    {
+      "url": "/",
+      "description": "This Helpdesk"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Tickets",
+      "description": "Tickets, their threads, replies and notes."
+    },
+    {
+      "name": "Public",
+      "description": "What Forms, Live Chat, sites and customers call."
+    },
+    {
+      "name": "Links",
+      "description": "The customer from CRM and articles from Knowledge Base."
+    },
+    {
+      "name": "Mail",
+      "description": "The support addresses' mail."
+    },
+    {
+      "name": "Reports",
+      "description": "Queues, SLAs met and missed, and satisfaction."
+    },
+    {
+      "name": "Product",
+      "description": "Version, settings and health."
+    }
+  ],
+  "paths": {
+    "/healthz": {
+      "get": {
+        "operationId": "liveness",
+        "tags": [
+          "Product"
+        ],
+        "summary": "Liveness",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "The process is running.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Status"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/readyz": {
+      "get": {
+        "operationId": "readiness",
+        "tags": [
+          "Product"
+        ],
+        "summary": "Readiness",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "The database answers and the settings are applied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Status"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Not ready: the database or the settings are not there.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Status"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/metrics": {
+      "get": {
+        "operationId": "metrics",
+        "tags": [
+          "Product"
+        ],
+        "summary": "Prometheus metrics",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Metrics in the Prometheus text format.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          }
+        }
+      }
+    },
+    "/api/v1/version": {
+      "get": {
+        "operationId": "version",
+        "tags": [
+          "Product"
+        ],
+        "summary": "Product and version",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "This product and its version.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Version"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/products": {
+      "get": {
+        "operationId": "products",
+        "tags": [
+          "Product"
+        ],
+        "summary": "The install's other products",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          },
+          {
+            "adminToken": []
+          }
+        ],
+        "description": "Needs the viewer role.",
+        "responses": {
+          "200": {
+            "description": "From OPENASY_PRODUCTS, for the product switcher.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Products"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "x-openasy-role": "viewer"
+      }
+    },
+    "/api/v1/overview": {
+      "get": {
+        "operationId": "overview",
+        "tags": [
+          "Reports"
+        ],
+        "summary": "Open tickets now",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          },
+          {
+            "adminToken": []
+          }
+        ],
+        "description": "Needs the viewer role.",
+        "responses": {
+          "200": {
+            "description": "Open and waiting tickets, by queue, and the SLAs about to run out: under an hour left, or missed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Overview"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "x-openasy-role": "viewer"
+      }
+    },
+    "/api/v1/settings": {
+      "get": {
+        "operationId": "settings",
+        "tags": [
+          "Product"
+        ],
+        "summary": "The settings file",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          },
+          {
+            "adminToken": []
+          }
+        ],
+        "description": "Needs the viewer role.",
+        "responses": {
+          "200": {
+            "description": "As applied. No route changes it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Settings"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "x-openasy-role": "viewer"
+      }
+    },
+    "/api/v1/team": {
+      "get": {
+        "operationId": "team",
+        "tags": [
+          "Tickets"
+        ],
+        "summary": "Members",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          },
+          {
+            "adminToken": []
+          }
+        ],
+        "description": "Needs the viewer role.",
+        "responses": {
+          "200": {
+            "description": "Who tickets can be given to.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Team"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "x-openasy-role": "viewer"
+      }
+    },
+    "/api/v1/mail": {
+      "get": {
+        "operationId": "mail",
+        "tags": [
+          "Mail"
+        ],
+        "summary": "The support addresses' mail",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          },
+          {
+            "adminToken": []
+          }
+        ],
+        "description": "Needs the viewer role.",
+        "responses": {
+          "200": {
+            "description": "Each address: whether it is read and sent from, the last reading and its error; the outbox; emails that did not become tickets, and why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MailState"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "x-openasy-role": "viewer"
+      }
+    },
+    "/api/v1/mail/check": {
+      "post": {
+        "operationId": "checkMail",
+        "tags": [
+          "Mail"
+        ],
+        "summary": "Read mail now",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          },
+          {
+            "adminToken": []
+          }
+        ],
+        "description": "Reads every address's new mail now instead of at its turn, and sends what is due in the outbox.\n\nNeeds the admin role.",
+        "responses": {
+          "200": {
+            "description": "Every address read, and the outbox sent.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MailState"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "x-openasy-role": "admin"
+      }
+    },
+    "/api/v1/tickets": {
+      "get": {
+        "operationId": "listTickets",
+        "tags": [
+          "Tickets"
+        ],
+        "summary": "Tickets",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          },
+          {
+            "adminToken": []
+          }
+        ],
+        "description": "Needs the viewer role.",
+        "parameters": [
+          {
+            "name": "queue",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "description": "solved includes closed.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "open",
+                "waiting",
+                "solved"
+              ]
+            }
+          },
+          {
+            "name": "owner",
+            "in": "query",
+            "description": "A member's id, or none.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "description": "A number (#1001), or words in the subject, the customer's name or address.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000,
+              "default": 500
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The SLA that runs out first first; paused and no-SLA tickets last.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TicketList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "x-openasy-role": "viewer"
+      }
+    },
+    "/api/v1/tickets/assign": {
+      "post": {
+        "operationId": "assignTickets",
+        "tags": [
+          "Tickets"
+        ],
+        "summary": "Give tickets to a member",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          },
+          {
+            "adminToken": []
+          }
+        ],
+        "description": "Needs the editor role.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Assign"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "How many changed hands.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Assigned"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "x-openasy-role": "editor"
+      }
+    },
+    "/api/v1/tickets/{number}": {
+      "get": {
+        "operationId": "getTicket",
+        "tags": [
+          "Tickets"
+        ],
+        "summary": "A ticket",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          },
+          {
+            "adminToken": []
+          }
+        ],
+        "description": "Needs the viewer role.",
+        "parameters": [
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "description": "The ticket's number, such as 1001.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "With its thread, clocks and the saved answers for its queue.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TicketDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "x-openasy-role": "viewer"
+      },
+      "patch": {
+        "operationId": "updateTicket",
+        "tags": [
+          "Tickets"
+        ],
+        "summary": "Change owner, priority, queue or status",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          },
+          {
+            "adminToken": []
+          }
+        ],
+        "description": "Solving stops the clocks and, after satisfaction.ask_after_solved, the customer is asked how it went. Waiting pauses them; open runs them again.\n\nNeeds the editor role.",
+        "parameters": [
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "description": "The ticket's number, such as 1001.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TicketPatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The ticket after the change.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TicketDetail"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "x-openasy-role": "editor"
+      }
+    },
+    "/api/v1/tickets/{number}/replies": {
+      "post": {
+        "operationId": "reply",
+        "tags": [
+          "Tickets"
+        ],
+        "summary": "Reply to the customer",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          },
+          {
+            "adminToken": []
+          }
+        ],
+        "description": "Sent from the ticket's support address with a Message-ID of ours, In-Reply-To the customer's last email and References to the thread, and the ticket's number in the subject or reply address (mail.reply_token). Stops the first-reply clock; the ticket then waits on the customer unless status says otherwise. 409 when there is no customer email or no SMTP server.\n\nNeeds the editor role.",
+        "parameters": [
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "description": "The ticket's number, such as 1001.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Reply"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The reply, sent or waiting in the outbox to be tried again.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Message"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "413": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "x-openasy-role": "editor"
+      }
+    },
+    "/api/v1/tickets/{number}/notes": {
+      "post": {
+        "operationId": "addNote",
+        "tags": [
+          "Tickets"
+        ],
+        "summary": "Add an internal note",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          },
+          {
+            "adminToken": []
+          }
+        ],
+        "description": "Needs the editor role.",
+        "parameters": [
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "description": "The ticket's number, such as 1001.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Note"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The note. Only the team sees it; no clock changes.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Message"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "x-openasy-role": "editor"
+      }
+    },
+    "/api/v1/tickets/{number}/customer": {
+      "get": {
+        "operationId": "ticketCustomer",
+        "tags": [
+          "Links"
+        ],
+        "summary": "The customer from CRM",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          },
+          {
+            "adminToken": []
+          }
+        ],
+        "description": "Needs the viewer role.",
+        "parameters": [
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "description": "The ticket's number, such as 1001.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Matched by email only.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Customer"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "x-openasy-role": "viewer"
+      }
+    },
+    "/api/v1/tickets/{number}/articles": {
+      "get": {
+        "operationId": "ticketArticles",
+        "tags": [
+          "Links"
+        ],
+        "summary": "Suggested articles from Knowledge Base",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          },
+          {
+            "adminToken": []
+          }
+        ],
+        "description": "Needs the viewer role.",
+        "parameters": [
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "description": "The ticket's number, such as 1001.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Up to three, for the ticket's subject. linked is false when the settings file links no Knowledge Base.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Articles"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "x-openasy-role": "viewer"
+      }
+    },
+    "/api/v1/attachments/{id}": {
+      "get": {
+        "operationId": "attachment",
+        "tags": [
+          "Tickets"
+        ],
+        "summary": "An attachment",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          },
+          {
+            "adminToken": []
+          }
+        ],
+        "description": "Needs the viewer role.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The file. PNG, JPEG, GIF and WebP images are shown inline; anything else is downloaded as application/octet-stream, in a sandbox.",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "image/png": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "x-openasy-role": "viewer"
+      }
+    },
+    "/api/v1/report": {
+      "get": {
+        "operationId": "report",
+        "tags": [
+          "Reports"
+        ],
+        "summary": "Reports",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          },
+          {
+            "adminToken": []
+          }
+        ],
+        "description": "Needs the viewer role.",
+        "parameters": [
+          {
+            "name": "days",
+            "in": "query",
+            "description": "The period: 7, 30 or 90 days. Default 30.",
+            "schema": {
+              "type": "integer",
+              "enum": [
+                7,
+                30,
+                90
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tickets opened in the period, times in working hours, SLAs met and missed, and satisfaction, by queue and channel.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Report"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "x-openasy-role": "viewer"
+      }
+    },
+    "/api/v1/public/tickets": {
+      "post": {
+        "operationId": "createPublicTicket",
+        "tags": [
+          "Public"
+        ],
+        "summary": "A ticket from Forms, Live Chat or a site's form",
+        "description": "Servers (Forms, Live Chat) send the source's key from the settings file as `Authorization: Bearer <key>`. Pages on one of the source's `origins` may post from the browser with no key (CORS), up to 10 a minute from one address; a browser cannot send agents' chat lines. Plain HTML forms may post `application/x-www-form-urlencoded`, with other answers as `fields[<name>]`; they get a thank-you page, or a redirect.",
+        "security": [
+          {
+            "sourceKey": []
+          },
+          {}
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PublicTicket"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/PublicTicket"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The same external_id from the same source: the ticket it opened before.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicTicketCreated"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Opened. HTML forms get a thank-you page.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicTicketCreated"
+                }
+              },
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Taken and dropped: the hidden website field was filled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicTicketCreated"
+                }
+              }
+            }
+          },
+          "303": {
+            "description": "An HTML form with redirect: to that address."
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "413": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          }
+        }
+      }
+    },
+    "/api/v1/public/tickets/{number}/messages": {
+      "post": {
+        "operationId": "addPublicMessage",
+        "tags": [
+          "Public"
+        ],
+        "summary": "More of a chat, on its ticket",
+        "description": "For the source that opened the ticket, with its key. A customer's line opens a waiting ticket again; an agent's line meets the first-reply clock.",
+        "security": [
+          {
+            "sourceKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "description": "The ticket's number, such as 1001.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PublicMessage"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Added.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicMessageAdded"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "413": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          }
+        }
+      }
+    },
+    "/r/{token}": {
+      "get": {
+        "operationId": "satisfactionPage",
+        "tags": [
+          "Public"
+        ],
+        "summary": "How did we do?",
+        "security": [],
+        "description": "The page the satisfaction email links to, with the answer from the link chosen. Nothing is kept until it is sent, so mail scanners that open links change nothing. In English, German or Turkish, from Accept-Language.",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "score",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 5
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The question.",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The link ended: 30 days after it was asked.",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "answerSatisfaction",
+        "tags": [
+          "Public"
+        ],
+        "summary": "Answer how it went",
+        "security": [],
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "score": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 5
+                  },
+                  "comment": {
+                    "type": "string",
+                    "maxLength": 5000
+                  }
+                },
+                "required": [
+                  "score"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Thanks; or the question again when no score was chosen.",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The link ended.",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "session": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "__Host-openasy-session",
+        "description": "The browser session after signing in (`openasy-session` when Helpdesk runs on plain http://localhost). Requests that change something must come from the Helpdesk origin."
+      },
+      "apiToken": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "An API token created under Settings, API tokens (`oa_helpdesk_...`): one role, always an expiry (ADR 0003)."
+      },
+      "adminToken": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Only when Helpdesk is started by its tests or a local script: one shared token with the admin role. A production install does not have it."
+      },
+      "sourceKey": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "The key of a source in the settings file (`sources.<id>.key` names the environment variable that holds it). Forms and Live Chat send it from their servers."
+      }
+    },
+    "responses": {
+      "Problem": {
+        "description": "An error, as RFC 9457 Problem Details.",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "Problem": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "format": "uri"
+          },
+          "title": {
+            "type": "string"
+          },
+          "status": {
+            "type": "integer"
+          },
+          "code": {
+            "type": "string",
+            "enum": [
+              "invalid-token",
+              "invalid-json",
+              "invalid-body",
+              "forbidden-origin",
+              "not-found",
+              "conflict",
+              "rate-limited",
+              "payload-too-large",
+              "unavailable",
+              "internal-error",
+              "unauthenticated",
+              "invalid-credentials",
+              "mfa-required",
+              "mfa-setup-required",
+              "forbidden",
+              "cross-site"
+            ],
+            "description": "Stable; match on this."
+          },
+          "detail": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "title",
+          "status",
+          "code"
+        ],
+        "additionalProperties": true
+      },
+      "Status": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "additionalProperties": false
+      },
+      "Version": {
+        "type": "object",
+        "properties": {
+          "product": {
+            "const": "helpdesk"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "product",
+          "version"
+        ],
+        "additionalProperties": false
+      },
+      "Products": {
+        "type": "object",
+        "properties": {
+          "products": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "url": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "url"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "products"
+        ],
+        "additionalProperties": false
+      },
+      "ConfigFile": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "appliedAt": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "error": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "warnings": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "path",
+              "appliedAt",
+              "error",
+              "warnings"
+            ],
+            "additionalProperties": false,
+            "description": "The settings file and whether it is applied; null before it was first read."
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "Member": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "email"
+        ],
+        "additionalProperties": false
+      },
+      "Team": {
+        "type": "object",
+        "properties": {
+          "members": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Member"
+            }
+          }
+        },
+        "required": [
+          "members"
+        ],
+        "additionalProperties": false
+      },
+      "Channel": {
+        "type": "string",
+        "enum": [
+          "email",
+          "form",
+          "chat"
+        ]
+      },
+      "TicketStatus": {
+        "type": "string",
+        "enum": [
+          "open",
+          "waiting",
+          "solved",
+          "closed"
+        ]
+      },
+      "Priority": {
+        "type": "string",
+        "enum": [
+          "urgent",
+          "high",
+          "normal",
+          "low"
+        ]
+      },
+      "SlaSummary": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "which": {
+                "type": "string",
+                "enum": [
+                  "firstReply",
+                  "solution"
+                ]
+              },
+              "state": {
+                "type": "string",
+                "enum": [
+                  "running",
+                  "paused",
+                  "met",
+                  "missed"
+                ]
+              },
+              "remaining": {
+                "type": "integer",
+                "description": "Working time left, ms; below zero once missed."
+              },
+              "dueAt": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "missedAt": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "which",
+              "state",
+              "remaining",
+              "dueAt",
+              "missedAt"
+            ],
+            "additionalProperties": false,
+            "description": "The clock that matters now: the first reply until it is sent, then the solution. null when the queue sets no target, and for solved tickets."
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "TicketSummary": {
+        "type": "object",
+        "properties": {
+          "number": {
+            "type": "integer"
+          },
+          "subject": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/TicketStatus"
+          },
+          "priority": {
+            "$ref": "#/components/schemas/Priority"
+          },
+          "queue": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "name"
+            ],
+            "additionalProperties": false
+          },
+          "channel": {
+            "$ref": "#/components/schemas/Channel"
+          },
+          "customer": {
+            "type": "object",
+            "properties": {
+              "email": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "name": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "email",
+              "name"
+            ],
+            "additionalProperties": false
+          },
+          "owner": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "name"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "sla": {
+            "$ref": "#/components/schemas/SlaSummary"
+          },
+          "satisfaction": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 5
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "number",
+          "subject",
+          "status",
+          "priority",
+          "queue",
+          "channel",
+          "customer",
+          "owner",
+          "createdAt",
+          "updatedAt",
+          "sla",
+          "satisfaction"
+        ],
+        "additionalProperties": false
+      },
+      "Clock": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "target": {
+                "type": "integer"
+              },
+              "state": {
+                "type": "string",
+                "enum": [
+                  "running",
+                  "paused",
+                  "met",
+                  "missed"
+                ]
+              },
+              "elapsed": {
+                "type": "integer"
+              },
+              "remaining": {
+                "type": "integer"
+              },
+              "dueAt": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "missedAt": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "doneAt": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "target",
+              "state",
+              "elapsed",
+              "remaining",
+              "dueAt",
+              "missedAt",
+              "doneAt"
+            ],
+            "additionalProperties": false,
+            "description": "One SLA clock, in ms of working time in the queue's hours; null when the queue sets no target for it."
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "Attachment": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "filename": {
+            "type": "string"
+          },
+          "contentType": {
+            "type": "string"
+          },
+          "size": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "filename",
+          "contentType",
+          "size"
+        ],
+        "additionalProperties": false
+      },
+      "Message": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "customer",
+              "agent",
+              "note",
+              "system"
+            ]
+          },
+          "via": {
+            "type": "string",
+            "enum": [
+              "email",
+              "form",
+              "chat",
+              "web",
+              "helpdesk"
+            ]
+          },
+          "author": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "name": {
+                "type": "string"
+              },
+              "email": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "email"
+            ],
+            "additionalProperties": false
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "subject": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "body": {
+            "type": "string",
+            "description": "Plain text: the new part of an email, without what it quoted."
+          },
+          "fullText": {
+            "anyOf": [
+              {
+                "type": "string",
+                "description": "The whole email, with what it quoted, when that differs."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "html": {
+            "anyOf": [
+              {
+                "type": "string",
+                "description": "An email's HTML, sanitized: safe to show."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "to": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "cc": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "delivery": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "queued",
+                  "sent",
+                  "failed"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "deliveryError": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "event": {
+            "anyOf": [
+              {
+                "type": "string",
+                "description": "For system lines: opened, follows, crm-unavailable, reopened, moved, assigned, priority, status, solved, satisfaction-asked, satisfaction, acknowledged, auto-reply, bounce, delivery-failed."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "data": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": true
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "attachments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Attachment"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "via",
+          "author",
+          "at",
+          "subject",
+          "body",
+          "fullText",
+          "html",
+          "to",
+          "cc",
+          "delivery",
+          "deliveryError",
+          "event",
+          "data",
+          "attachments"
+        ],
+        "additionalProperties": false
+      },
+      "TicketDetail": {
+        "type": "object",
+        "description": "A ticket with its thread, clocks and saved answers.",
+        "properties": {
+          "number": {
+            "type": "integer"
+          },
+          "subject": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/TicketStatus"
+          },
+          "priority": {
+            "$ref": "#/components/schemas/Priority"
+          },
+          "queue": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "name"
+            ],
+            "additionalProperties": false
+          },
+          "channel": {
+            "$ref": "#/components/schemas/Channel"
+          },
+          "customer": {
+            "type": "object",
+            "properties": {
+              "email": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "name": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "email",
+              "name"
+            ],
+            "additionalProperties": false
+          },
+          "owner": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "name"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "sla": {
+            "$ref": "#/components/schemas/SlaSummary"
+          },
+          "satisfaction": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 5
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "address": {
+            "anyOf": [
+              {
+                "type": "string",
+                "description": "The support address replies go out from."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "canReply": {
+            "type": "boolean",
+            "description": "There is a customer email, and the address has an SMTP server."
+          },
+          "source": {
+            "type": "string",
+            "description": "The support address it came to, or the source id for forms and chats."
+          },
+          "form": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "routedBy": {
+            "type": "string",
+            "description": "Why it is in its queue, such as subject has \"invoice\"."
+          },
+          "plan": {
+            "anyOf": [
+              {
+                "type": "string",
+                "description": "The customer's plan from CRM when the ticket was opened."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "follows": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "firstReplyAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "solvedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "clocks": {
+            "type": "object",
+            "properties": {
+              "firstReply": {
+                "$ref": "#/components/schemas/Clock"
+              },
+              "solution": {
+                "$ref": "#/components/schemas/Clock"
+              },
+              "firstReplyText": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "solutionText": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "firstReply",
+              "solution",
+              "firstReplyText",
+              "solutionText"
+            ],
+            "additionalProperties": false
+          },
+          "hours": {
+            "type": "object",
+            "properties": {
+              "always": {
+                "type": "boolean"
+              },
+              "text": {
+                "type": "string"
+              },
+              "timeZone": {
+                "type": "string"
+              },
+              "described": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "always",
+              "text",
+              "timeZone",
+              "described"
+            ],
+            "additionalProperties": false
+          },
+          "rating": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "askedAt": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "format": "date-time"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "score": {
+                    "anyOf": [
+                      {
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "comment": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "at": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "format": "date-time"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "askedAt",
+                  "score",
+                  "comment",
+                  "at"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "messages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Message"
+            }
+          },
+          "answers": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "text": {
+                  "type": "string",
+                  "description": "Filled for this ticket and the person asking."
+                }
+              },
+              "required": [
+                "id",
+                "title",
+                "text"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "number",
+          "subject",
+          "status",
+          "priority",
+          "queue",
+          "channel",
+          "customer",
+          "owner",
+          "createdAt",
+          "updatedAt",
+          "sla",
+          "satisfaction",
+          "address",
+          "canReply",
+          "source",
+          "form",
+          "routedBy",
+          "plan",
+          "follows",
+          "firstReplyAt",
+          "solvedAt",
+          "clocks",
+          "hours",
+          "rating",
+          "messages",
+          "answers"
+        ],
+        "additionalProperties": false
+      },
+      "TicketList": {
+        "type": "object",
+        "properties": {
+          "tickets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TicketSummary"
+            }
+          }
+        },
+        "required": [
+          "tickets"
+        ],
+        "additionalProperties": false
+      },
+      "TicketPatch": {
+        "type": "object",
+        "properties": {
+          "owner": {
+            "anyOf": [
+              {
+                "type": "string",
+                "description": "A member's id, or null for nobody."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "priority": {
+            "$ref": "#/components/schemas/Priority"
+          },
+          "queue": {
+            "type": "string",
+            "description": "A queue id from the settings file. The clocks not met or missed start again with its SLA."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "open",
+              "waiting",
+              "solved"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "Reply": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "maxLength": 100000
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "waiting",
+              "open",
+              "solved"
+            ],
+            "default": "waiting",
+            "description": "What the ticket is after the reply."
+          },
+          "cc": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "email"
+            }
+          },
+          "attachments": {
+            "type": "array",
+            "maxItems": 10,
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "type": {
+                  "type": "string"
+                },
+                "data": {
+                  "type": "string",
+                  "contentEncoding": "base64"
+                }
+              },
+              "required": [
+                "name",
+                "data"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "additionalProperties": false
+      },
+      "Note": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "maxLength": 100000
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "additionalProperties": false
+      },
+      "Assign": {
+        "type": "object",
+        "properties": {
+          "tickets": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            }
+          },
+          "owner": {
+            "anyOf": [
+              {
+                "type": "string",
+                "description": "A member's id, \"me\", or null."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "tickets",
+          "owner"
+        ],
+        "additionalProperties": false
+      },
+      "Assigned": {
+        "type": "object",
+        "properties": {
+          "assigned": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "assigned"
+        ],
+        "additionalProperties": false
+      },
+      "CrmContact": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "company": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "users": {
+                    "anyOf": [
+                      {
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "name",
+                  "users"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "plan": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "renews": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "name",
+                  "renews"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "owner": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "email": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "name",
+                  "email"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "email",
+          "title",
+          "company",
+          "plan",
+          "owner",
+          "url"
+        ],
+        "additionalProperties": false
+      },
+      "CrmDeal": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "amount": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "stage": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "open",
+              "won",
+              "lost"
+            ]
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "amount",
+          "currency",
+          "stage",
+          "status",
+          "url"
+        ],
+        "additionalProperties": false
+      },
+      "Customer": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "linked": {
+                "const": false
+              }
+            },
+            "required": [
+              "linked"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "linked": {
+                "const": true
+              },
+              "email": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "tickets": {
+                "type": "object",
+                "properties": {
+                  "year": {
+                    "type": "integer"
+                  },
+                  "open": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "year",
+                  "open"
+                ],
+                "additionalProperties": false
+              },
+              "found": {
+                "type": "boolean"
+              },
+              "error": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "contact": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/CrmContact"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "deals": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/CrmDeal"
+                }
+              }
+            },
+            "required": [
+              "linked",
+              "email",
+              "tickets",
+              "found",
+              "error",
+              "contact",
+              "deals"
+            ],
+            "additionalProperties": false
+          }
+        ],
+        "description": "The customer from CRM, matched by email only. `linked: false` when the settings file links no CRM; the UI then shows nothing."
+      },
+      "CrmLookup": {
+        "type": "object",
+        "properties": {
+          "contact": {
+            "$ref": "#/components/schemas/CrmContact"
+          },
+          "deals": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CrmDeal"
+            }
+          }
+        },
+        "required": [
+          "contact"
+        ],
+        "additionalProperties": true,
+        "description": "What Helpdesk expects CRM to answer to GET <crm.url>/api/v1/lookup?email=<address> with Authorization: Bearer <key>: 200 with this, or 404 when no contact has exactly that address. Not a route of Helpdesk."
+      },
+      "Articles": {
+        "type": "object",
+        "properties": {
+          "linked": {
+            "type": "boolean"
+          },
+          "articles": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "title": {
+                  "type": "string"
+                },
+                "excerpt": {
+                  "type": "string"
+                },
+                "url": {
+                  "type": "string"
+                },
+                "helpful": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "title",
+                "excerpt",
+                "url",
+                "helpful"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "linked",
+          "articles",
+          "error"
+        ],
+        "additionalProperties": false
+      },
+      "MailState": {
+        "type": "object",
+        "properties": {
+          "addresses": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "address": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "reading": {
+                  "type": "boolean"
+                },
+                "sending": {
+                  "type": "boolean"
+                },
+                "passwordSet": {
+                  "type": "boolean"
+                },
+                "checkedAt": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "okAt": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "error": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "ignored": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "address",
+                "name",
+                "reading",
+                "sending",
+                "passwordSet",
+                "checkedAt",
+                "okAt",
+                "error",
+                "ignored"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "outbox": {
+            "type": "object",
+            "properties": {
+              "queued": {
+                "type": "integer"
+              },
+              "failed": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "queued",
+              "failed"
+            ],
+            "additionalProperties": false
+          },
+          "ignored": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "at": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "address": {
+                  "type": "string"
+                },
+                "sender": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "subject": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "reason": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "at",
+                "address",
+                "sender",
+                "subject",
+                "reason"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "addresses",
+          "outbox",
+          "ignored"
+        ],
+        "additionalProperties": false
+      },
+      "Overview": {
+        "type": "object",
+        "properties": {
+          "file": {
+            "$ref": "#/components/schemas/ConfigFile"
+          },
+          "open": {
+            "type": "integer"
+          },
+          "waiting": {
+            "type": "integer"
+          },
+          "unassigned": {
+            "type": "integer"
+          },
+          "missedNow": {
+            "type": "integer"
+          },
+          "queues": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "open": {
+                  "type": "integer"
+                },
+                "waiting": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "open",
+                "waiting"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "atRisk": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TicketSummary"
+            }
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "file",
+          "open",
+          "waiting",
+          "unassigned",
+          "missedNow",
+          "queues",
+          "atRisk",
+          "at"
+        ],
+        "additionalProperties": false
+      },
+      "Report": {
+        "type": "object",
+        "properties": {
+          "days": {
+            "type": "integer"
+          },
+          "from": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "timeZone": {
+            "type": "string"
+          },
+          "totals": {
+            "type": "object",
+            "properties": {
+              "opened": {
+                "type": "integer"
+              },
+              "openedBefore": {
+                "type": "integer"
+              },
+              "solved": {
+                "type": "integer"
+              },
+              "firstReply": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "description": "Median, ms of working time."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "firstReplyBefore": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "description": "Median, ms of working time."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "solvedIn": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "description": "Median, ms of working time."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "slaMet": {
+                "type": "integer"
+              },
+              "slaMissed": {
+                "type": "integer"
+              },
+              "satisfaction": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "answers": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "opened",
+              "openedBefore",
+              "solved",
+              "firstReply",
+              "firstReplyBefore",
+              "solvedIn",
+              "slaMet",
+              "slaMissed",
+              "satisfaction",
+              "answers"
+            ],
+            "additionalProperties": false
+          },
+          "series": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "day": {
+                  "type": "string"
+                },
+                "opened": {
+                  "type": "integer"
+                },
+                "solved": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "day",
+                "opened",
+                "solved"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "byQueue": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "tickets": {
+                  "type": "integer"
+                },
+                "firstReply": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "description": "Median, ms of working time."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "solvedIn": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "description": "Median, ms of working time."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "slaMet": {
+                  "type": "integer"
+                },
+                "slaMissed": {
+                  "type": "integer"
+                },
+                "satisfaction": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "answers": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "tickets",
+                "firstReply",
+                "solvedIn",
+                "slaMet",
+                "slaMissed",
+                "satisfaction",
+                "answers"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "byChannel": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "channel": {
+                  "$ref": "#/components/schemas/Channel"
+                },
+                "tickets": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "channel",
+                "tickets"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "arrivals": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              }
+            },
+            "minItems": 7,
+            "maxItems": 7,
+            "description": "Tickets a week on average, by weekday (Monday first) and hour, in the support's time zone."
+          }
+        },
+        "required": [
+          "days",
+          "from",
+          "timeZone",
+          "totals",
+          "series",
+          "byQueue",
+          "byChannel",
+          "arrivals"
+        ],
+        "additionalProperties": false
+      },
+      "Settings": {
+        "type": "object",
+        "properties": {
+          "config": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": true,
+                "required": [
+                  "support",
+                  "mail",
+                  "addresses",
+                  "queues",
+                  "satisfaction",
+                  "answers",
+                  "sources",
+                  "crm",
+                  "knowledgeBase"
+                ],
+                "description": "As the file sets it. Secrets are not in it: only the names of the environment variables holding them."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "yaml": {
+            "type": "string",
+            "description": "The file's text as applied."
+          },
+          "file": {
+            "$ref": "#/components/schemas/ConfigFile"
+          }
+        },
+        "required": [
+          "config",
+          "yaml",
+          "file"
+        ],
+        "additionalProperties": false
+      },
+      "PublicTicket": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "source": {
+            "type": "string",
+            "description": "The source id from the settings file. With a key it may be left out: the key says which source it is."
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "description": "The customer's address; replies go to it, and CRM is asked about it. Required for forms."
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "subject": {
+            "type": "string",
+            "maxLength": 300
+          },
+          "message": {
+            "type": "string",
+            "maxLength": 50000,
+            "description": "What the customer wrote. Required for forms without a transcript."
+          },
+          "form": {
+            "type": "string",
+            "maxLength": 64,
+            "description": "Which form, for routing rules with match.form."
+          },
+          "fields": {
+            "type": "object",
+            "maxProperties": 50,
+            "additionalProperties": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ]
+            },
+            "description": "The form's other answers, shown with the message."
+          },
+          "language": {
+            "type": "string",
+            "maxLength": 10
+          },
+          "external_id": {
+            "type": "string",
+            "maxLength": 200,
+            "description": "What Forms or Live Chat calls this request: the same id from the same source opens one ticket."
+          },
+          "transcript": {
+            "type": "array",
+            "maxItems": 500,
+            "items": {
+              "type": "object",
+              "properties": {
+                "from": {
+                  "type": "string",
+                  "enum": [
+                    "customer",
+                    "agent"
+                  ]
+                },
+                "name": {
+                  "type": "string"
+                },
+                "at": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "text": {
+                  "type": "string",
+                  "maxLength": 10000
+                }
+              },
+              "required": [
+                "from",
+                "text"
+              ]
+            },
+            "description": "A chat's lines. Agents' lines need the source's key; with one, the first-reply clock is met."
+          },
+          "website": {
+            "type": "string",
+            "description": "Leave empty: a hidden field that only bots fill."
+          },
+          "redirect": {
+            "type": "string",
+            "format": "uri",
+            "description": "For HTML forms: where to send the browser after, on one of the source's origins; ?ticket=<number> is added."
+          }
+        }
+      },
+      "PublicTicketCreated": {
+        "type": "object",
+        "properties": {
+          "ticket": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "number": {
+                    "type": "integer"
+                  },
+                  "reference": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "$ref": "#/components/schemas/TicketStatus"
+                  }
+                },
+                "required": [
+                  "number",
+                  "reference",
+                  "status"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ticket",
+          "created"
+        ],
+        "additionalProperties": false
+      },
+      "PublicMessage": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "string",
+            "enum": [
+              "customer",
+              "agent"
+            ],
+            "default": "customer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 50000
+          }
+        },
+        "required": [
+          "text"
+        ]
+      },
+      "PublicMessageAdded": {
+        "type": "object",
+        "properties": {
+          "ticket": {
+            "type": "object",
+            "properties": {
+              "number": {
+                "type": "integer"
+              },
+              "reference": {
+                "type": "string"
+              },
+              "status": {
+                "$ref": "#/components/schemas/TicketStatus"
+              }
+            },
+            "required": [
+              "number",
+              "reference",
+              "status"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "ticket"
+        ],
+        "additionalProperties": false
+      }
+    }
+  }
+}

@@ -1,0 +1,95 @@
+# Helpdesk's settings. This file is the only place they are changed; a change is picked up within a minute, and a file
+# with a mistake leaves the last good one in place. Tickets are worked in the UI. Secrets are never written here: the
+# file names the environment variables that hold them.
+support:
+  name: Acme Support # the name replies are sent with
+  language: en # emails Helpdesk writes itself (acknowledgements, the satisfaction question): en, de or tr
+  time_zone: Europe/Istanbul
+  holidays: [2026-10-29, 2027-01-01] # no SLA clock runs on these days
+  reopen_within: 7d # a reply this long after solving opens a new ticket instead
+  acknowledge: false # true: tell new customers their request is in, with its number
+
+mail:
+  # Support addresses on OpenAsy Mail use its Stalwart server; any other mail server works the same way.
+  imap: { host: mail.example.com, port: 993, tls: true }
+  smtp: { host: mail.example.com, port: 465, tls: true }
+  password: HELPDESK_MAIL_PASSWORD # the variable holding the addresses' password, unless an address names its own
+  check_every: 1m
+  reply_token: subject # where replies carry the ticket besides their headers: subject ([#1001]), address (support+1001-...@) or both
+
+addresses:
+  - support@example.com # on Mail
+  - address: it@example.com
+    password: HELPDESK_IT_PASSWORD
+
+# A ticket goes to the first queue whose rule matches; a queue with no match takes the rest.
+queues:
+  billing:
+    match:
+      - { subject_has: [fatura, invoice, charge, refund] }
+      - { plan: business, form: billing }
+    hours: weekdays 09:00-18:00 # the SLA clock runs only in these hours
+    sla: { first_reply: 4h, solution: 1d } # 1d is one working day
+    sla_by_plan: { business: { first_reply: 2h } } # the plan comes from CRM
+  technical:
+    match: { form: bug-report }
+    hours: weekdays 09:00-18:00
+    sla: { first_reply: 4h, solution: 2d }
+  sales:
+    name: Sales questions
+    match: { channel: chat }
+    sla: { first_reply: 4h, solution: 1d }
+  it:
+    name: IT
+    match: { address: it@example.com }
+    hours: weekdays 08:30-17:30
+    sla: { solution: 3d }
+  general:
+    hours: weekdays 09:00-18:00
+    sla: { first_reply: 1d, solution: 3d }
+
+satisfaction:
+  ask_after_solved: 1h # off to never ask
+
+answers:
+  - id: gib-1150
+    title: "GİB rejection 1150: certificate renewed"
+    queues: [billing]
+    text: |
+      Hello {first_name},
+
+      The e-Fatura integrator renewed its certificate last night and GİB rejected invoices signed with the old one. It is
+      fixed; please send the invoices again from Invoices, Rejected, Send again.
+
+      {agent}
+  - id: thanks
+    title: Thanks, closing the ticket
+    text: |
+      Hello {first_name},
+
+      Thank you for letting us know. I am closing #{number}; reply to this email if anything comes up again.
+
+      {agent}
+
+# Where Forms, Live Chat and a site's own form post tickets: POST /api/v1/public/tickets.
+sources:
+  forms:
+    channel: form
+    key: HELPDESK_FORMS_KEY # servers send it as Authorization: Bearer <key>
+  live-chat:
+    channel: chat
+    key: HELPDESK_LIVE_CHAT_KEY
+  contact-page:
+    channel: form
+    origins: [https://www.example.com] # pages on these origins may post from the browser, with no key
+
+
+# The customer and their deals beside each ticket, matched by email only. Leave it out and nothing is shown.
+# crm:
+#   url: https://crm.example.com
+#   token: HELPDESK_CRM_TOKEN
+
+# Articles suggested beside the reply box.
+# knowledge_base:
+#   url: https://kb.example.com
+#   language: tr

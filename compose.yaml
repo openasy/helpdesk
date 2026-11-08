@@ -1,0 +1,41 @@
+# Helpdesk. Queues, routing rules, SLAs and the support addresses are in helpdesk.yaml; tickets are worked in the UI.
+#
+#   openssl rand -hex 32 > openasy-kek   # the product's key: sign-in secrets (ADR 0021). Keep it with your backups
+#   docker compose up -d
+#   docker compose logs helpdesk | grep 'no owner yet'   # the one-time link that creates the owner account
+services:
+  helpdesk:
+    image: ghcr.io/openasy/helpdesk:0.1.0
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs: [/tmp]
+    ports:
+      - "127.0.0.1:8080:8080" # UI, API, the public ticket API and the satisfaction pages; put a TLS proxy in front
+    volumes:
+      - helpdesk-data:/data # SQLite database: tickets, their threads and attachments
+      - ./config:/config:ro # helpdesk.yaml; mount the folder so an editor's save reaches it
+    secrets:
+      - openasy-kek # mounted at /run/secrets/openasy-kek
+    environment:
+      # The address people open Helpdesk at; satisfaction links in emails use it. With a TLS proxy, its https:// URL.
+      HELPDESK_PUBLIC_URL: ${HELPDESK_PUBLIC_URL:-http://localhost:8080}
+      HELPDESK_CONFIG: /config/helpdesk.yaml
+      # The secrets helpdesk.yaml names, never written in the file itself:
+      HELPDESK_MAIL_PASSWORD: ${HELPDESK_MAIL_PASSWORD:-}
+      # HELPDESK_IT_PASSWORD: ${HELPDESK_IT_PASSWORD}
+      # HELPDESK_FORMS_KEY: ${HELPDESK_FORMS_KEY}         # what Forms sends as Authorization: Bearer
+      # HELPDESK_LIVE_CHAT_KEY: ${HELPDESK_LIVE_CHAT_KEY} # what Live Chat sends
+      # HELPDESK_CRM_TOKEN: ${HELPDESK_CRM_TOKEN}
+      # Sign in with your identity provider (OIDC), see the README:
+      # OPENASY_OIDC_ISSUER: https://login.example.com
+      # OPENASY_OIDC_CLIENT_ID: helpdesk
+      # OPENASY_OIDC_CLIENT_SECRET: ${OPENASY_OIDC_CLIENT_SECRET}
+
+volumes:
+  helpdesk-data:
+
+secrets:
+  openasy-kek:
+    file: ./openasy-kek
