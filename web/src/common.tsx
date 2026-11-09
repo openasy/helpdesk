@@ -5,6 +5,7 @@ import { ClipboardList, Mail, MessageCircle } from "lucide-react";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { api, MfaSetupRequired, Unauthorized, type Channel, type Priority, type Sla, type Status, type Ticket } from "./api.ts";
 import type { T } from "./i18n.ts";
+import { viewerLocale } from "./i18n.ts";
 
 /** Data loading with the session; when it ends, the sign-in screen comes back. */
 export function useApi() {
@@ -75,7 +76,7 @@ export function Code({ children, label }: { children: ReactNode; label?: string 
 
 // ---------------------------------------------------------------- Formatting
 
-export const fmt = (n: number) => n.toLocaleString();
+export const fmt = (n: number) => n.toLocaleString(viewerLocale());
 const MIN = 60_000;
 
 /** A length of time as people say it: 38 min, 2 h 12 min, 1 day 2 h. */
@@ -89,8 +90,8 @@ export function duration(ms: number, t: T): string {
   return t("time.minutes", { m });
 }
 
-export const time = (iso: string) => new Date(iso).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
-export const date = (iso: string) => new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short" });
+export const time = (iso: string) => new Date(iso).toLocaleTimeString(viewerLocale(), { hour: "2-digit", minute: "2-digit" });
+export const date = (iso: string) => new Date(iso).toLocaleDateString(viewerLocale(), { day: "numeric", month: "short" });
 
 /** Today's time, or yesterday, or the date: how a list says when. */
 export function when(iso: string, t: T, now = Date.now()) {
@@ -102,7 +103,7 @@ export function when(iso: string, t: T, now = Date.now()) {
 }
 
 /** How long ago, in words and in the page's language: 3 days ago. */
-export function ago(iso: string, locale?: string, now = Date.now()) {
+export function ago(iso: string, locale: string = viewerLocale(), now = Date.now()) {
   const s = Math.round((Date.parse(iso) - now) / 1000);
   const rtf = new Intl.RelativeTimeFormat(locale, { numeric: "auto" });
   const abs = Math.abs(s);
@@ -146,9 +147,11 @@ export const ref = (n: number) => `#${n}`;
 export function money(amount: number | null, currency: string | null) {
   if (amount === null) return null;
   try {
-    return new Intl.NumberFormat(undefined, { style: currency ? "currency" : "decimal", currency: currency ?? undefined, maximumFractionDigits: 0 }).format(
-      amount,
-    );
+    return new Intl.NumberFormat(viewerLocale(), {
+      style: currency ? "currency" : "decimal",
+      currency: currency ?? undefined,
+      maximumFractionDigits: 0,
+    }).format(amount);
   } catch {
     return `${fmt(amount)} ${currency ?? ""}`.trim();
   }

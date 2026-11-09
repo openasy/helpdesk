@@ -22,13 +22,13 @@ import { useState } from "react";
 import type { MailState, Overview, Report, Settings } from "./api.ts";
 import { ago, Code, duration, fmt, ref, slaText, useLoad, useNow, type Call } from "./common.tsx";
 import { FileSettingsPage } from "./FileSettings.tsx";
-import { useT, type T } from "./i18n.ts";
+import { useT, type T, viewerLocale } from "./i18n.ts";
 
-const shortDay = (d: string) => new Date(`${d}T00:00:00Z`).toLocaleDateString(undefined, { day: "numeric", month: "short", timeZone: "UTC" });
+const shortDay = (d: string) => new Date(`${d}T00:00:00Z`).toLocaleDateString(viewerLocale(), { day: "numeric", month: "short", timeZone: "UTC" });
 const share = (met: number, missed: number) => (met + missed ? Math.round((met / (met + missed)) * 1000) / 10 : null);
 /** Monday first, in the page's language. */
 const weekdays = () =>
-  Array.from({ length: 7 }, (_, i) => new Date(Date.UTC(2026, 10, 2 + i)).toLocaleDateString(undefined, { weekday: "short", timeZone: "UTC" }));
+  Array.from({ length: 7 }, (_, i) => new Date(Date.UTC(2026, 10, 2 + i)).toLocaleDateString(viewerLocale(), { weekday: "short", timeZone: "UTC" }));
 
 // ---------------------------------------------------------------- Overview
 

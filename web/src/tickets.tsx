@@ -157,7 +157,7 @@ export function QueuePage({ call, settings, onChanged }: { call: Call; settings:
                     type="button"
                     onClick={() => (setQueue(q.id), setSelected([]))}
                     aria-current={q.id === queue ? "true" : undefined}
-                    className={`hd-queue flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-sm ${q.id === queue ? "bg-accent-soft text-accent-text" : "text-fg"}`}
+                    className={`hd-queue flex w-full items-center justify-between gap-2 px-3 py-1.5 text-start text-sm ${q.id === queue ? "bg-accent-soft text-accent-text" : "text-fg"}`}
                   >
                     <span className="truncate">{q.name}</span>
                     <span className="text-2xs text-fg-muted tabular-nums">{n}</span>
