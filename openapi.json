@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "OpenAsy Helpdesk API",
-    "version": "0.1.0",
+    "version": "0.1.1",
     "summary": "Emails, forms and chats become tickets in queues, with owners, SLAs, replies from the support address and the customer from CRM.",
     "description": "Every screen of Helpdesk uses this API, and so can your scripts (ADR 0014). Within `/api/v1` changes are additive only; anything removed is deprecated first (ADR 0024). Errors use Problem Details (RFC 9457).\n\nForms, Live Chat and a site's own form open tickets with `POST /api/v1/public/tickets`, with a source's key or from a page on its origins. Customers answer the satisfaction question at `/r/<token>`. Queues, routing rules, SLAs and the links to CRM and Knowledge Base come from the settings file, never the API. Everything else takes the session of a signed-in person or an API token, and each operation names the role it needs (`x-openasy-role`: viewer, editor, admin; ADR 0003).\n\nCRM is asked about a ticket's customer with `GET <crm.url>/api/v1/lookup?email=`; its answer is described here as `CrmLookup`.\n\nSign-in, members and API tokens are under `/api/v1/auth`, provided by [@openasy/auth](https://github.com/openasy/auth#routes).",
     "license": {

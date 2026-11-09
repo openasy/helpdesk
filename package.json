@@ -1,6 +1,6 @@
 {
   "name": "@openasy/helpdesk",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "OpenAsy Helpdesk: emails, forms and chats become tickets in queues, with owners, SLAs, replies from the support address and the customer from CRM.",
   "license": "AGPL-3.0-only",

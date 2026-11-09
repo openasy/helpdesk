@@ -5,7 +5,7 @@
 #   docker compose logs helpdesk | grep 'no owner yet'   # the one-time link that creates the owner account
 services:
   helpdesk:
-    image: ghcr.io/openasy/helpdesk:0.1.0
+    image: ghcr.io/openasy/helpdesk:0.1.1
     restart: unless-stopped
     read_only: true
     cap_drop: [ALL]
